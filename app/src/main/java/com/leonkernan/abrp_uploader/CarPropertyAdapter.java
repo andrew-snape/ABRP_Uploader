@@ -68,6 +68,13 @@ public class CarPropertyAdapter {
     private Class<?>       carClass;
     private Class<?>       cpmClass;
 
+    // Cached CarPropertyManager accessor methods — resolved once per connect()
+    // instead of on every single property read (getMethod() reflection lookup
+    // is not free and these are called ~6x every 15s).
+    private Method getIntPropertyMethod;
+    private Method getFloatPropertyMethod;
+    private Method getBooleanPropertyMethod;
+
     public CarPropertyAdapter(Listener listener) {
         this.listener = listener;
     }
@@ -91,6 +98,9 @@ public class CarPropertyAdapter {
                     Method getManager = carClass.getMethod("getCarManager", String.class);
                     cpm = getManager.invoke(car, svcName);
                     if (cpm != null) {
+                        getIntPropertyMethod     = cpmClass.getMethod("getIntProperty",     int.class, int.class);
+                        getFloatPropertyMethod   = cpmClass.getMethod("getFloatProperty",   int.class, int.class);
+                        getBooleanPropertyMethod = cpmClass.getMethod("getBooleanProperty", int.class, int.class);
                         Log.i(TAG, "CarPropertyManager ready");
                         listener.onConnected();
                     } else {
@@ -105,6 +115,9 @@ public class CarPropertyAdapter {
             public void onServiceDisconnected(ComponentName name) {
                 cpm = null;
                 car = null;
+                getIntPropertyMethod = null;
+                getFloatPropertyMethod = null;
+                getBooleanPropertyMethod = null;
                 Log.w(TAG, "Car service disconnected");
                 listener.onDisconnected();
             }
@@ -129,6 +142,9 @@ public class CarPropertyAdapter {
         }
         car = null;
         cpm = null;
+        getIntPropertyMethod = null;
+        getFloatPropertyMethod = null;
+        getBooleanPropertyMethod = null;
     }
 
     public boolean isConnected() {
@@ -347,10 +363,9 @@ public class CarPropertyAdapter {
 
     /** Area 0 covers global/non-zoned properties. */
     public int getIntProperty(int propId, int areaId) {
-        if (cpm == null) return 0;
+        if (cpm == null || getIntPropertyMethod == null) return 0;
         try {
-            return (Integer) cpmClass.getMethod("getIntProperty", int.class, int.class)
-                    .invoke(cpm, propId, areaId);
+            return (Integer) getIntPropertyMethod.invoke(cpm, propId, areaId);
         } catch (Exception e) {
             Log.e(TAG, "getIntProperty(" + Integer.toHexString(propId) + ") failed", e);
             return 0;
@@ -358,10 +373,9 @@ public class CarPropertyAdapter {
     }
 
     public float getFloatProperty(int propId, int areaId) {
-        if (cpm == null) return 0f;
+        if (cpm == null || getFloatPropertyMethod == null) return 0f;
         try {
-            return (float) cpmClass.getMethod("getFloatProperty", int.class, int.class)
-                    .invoke(cpm, propId, areaId);
+            return (float) getFloatPropertyMethod.invoke(cpm, propId, areaId);
         } catch (Exception e) {
             Log.e(TAG, "getFloatProperty(" + Integer.toHexString(propId) + ") failed", e);
             return 0f;
@@ -369,10 +383,9 @@ public class CarPropertyAdapter {
     }
 
     public boolean getBooleanProperty(int propId, int areaId) {
-        if (cpm == null) return false;
+        if (cpm == null || getBooleanPropertyMethod == null) return false;
         try {
-            return (boolean) cpmClass.getMethod("getBooleanProperty", int.class, int.class)
-                    .invoke(cpm, propId, areaId);
+            return (boolean) getBooleanPropertyMethod.invoke(cpm, propId, areaId);
         } catch (Exception e) {
             Log.e(TAG, "getBooleanProperty(" + Integer.toHexString(propId) + ") failed", e);
             return false;

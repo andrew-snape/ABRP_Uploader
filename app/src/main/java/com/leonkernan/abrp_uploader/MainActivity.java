@@ -33,10 +33,15 @@ public class MainActivity extends AppCompatActivity {
     private static final int COLOR_ERROR   = 0xFFF44336; // red
     private static final int COLOR_PENDING = 0xFF9E9E9E; // grey
 
+    static final int DEFAULT_UPLOAD_INTERVAL_SEC = 15;
+    private static final int MIN_UPLOAD_INTERVAL_SEC = 5;
+
     private TextInputLayout   apiKeyLayout;
     private TextInputEditText apiKeyInput;
     private TextInputLayout   tokenLayout;
     private TextInputEditText tokenInput;
+    private TextInputLayout   uploadIntervalLayout;
+    private TextInputEditText uploadIntervalInput;
     private SwitchMaterial    serviceSwitch;
     private TextView          statusText;
     private Button            testButton;
@@ -56,6 +61,8 @@ public class MainActivity extends AppCompatActivity {
         apiKeyInput         = findViewById(R.id.api_key_input);
         tokenLayout         = findViewById(R.id.token_layout);
         tokenInput          = findViewById(R.id.token_input);
+        uploadIntervalLayout = findViewById(R.id.upload_interval_layout);
+        uploadIntervalInput  = findViewById(R.id.upload_interval_input);
         serviceSwitch       = findViewById(R.id.service_switch);
         statusText          = findViewById(R.id.status_text);
         testButton          = findViewById(R.id.test_button);
@@ -65,6 +72,8 @@ public class MainActivity extends AppCompatActivity {
 
         apiKeyInput.setText(prefs.getString("api_key", ""));
         tokenInput.setText(prefs.getString("token", ""));
+        uploadIntervalInput.setText(String.valueOf(
+                prefs.getInt("upload_interval_sec", DEFAULT_UPLOAD_INTERVAL_SEC)));
         serviceSwitch.setChecked(prefs.getBoolean("service_enabled", false));
 
         // If the user wants the service running, kick it on every activity launch.
@@ -112,6 +121,8 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         apiKeyInput.setText(prefs.getString("api_key", ""));
         tokenInput.setText(prefs.getString("token", ""));
+        uploadIntervalInput.setText(String.valueOf(
+                prefs.getInt("upload_interval_sec", DEFAULT_UPLOAD_INTERVAL_SEC)));
         serviceSwitch.setChecked(prefs.getBoolean("service_enabled", false));
         refreshStatus();
     }
@@ -135,14 +146,30 @@ public class MainActivity extends AppCompatActivity {
         } else {
             tokenLayout.setError(null);
         }
+
+        int uploadIntervalSec = DEFAULT_UPLOAD_INTERVAL_SEC;
+        try {
+            uploadIntervalSec = Integer.parseInt(textOf(uploadIntervalInput));
+        } catch (NumberFormatException e) {
+            valid = false;
+        }
+        if (uploadIntervalSec < MIN_UPLOAD_INTERVAL_SEC) {
+            uploadIntervalLayout.setError(getString(R.string.upload_interval_invalid));
+            valid = false;
+        } else {
+            uploadIntervalLayout.setError(null);
+        }
         if (!valid) return;
 
         prefs.edit()
                 .putString("api_key", apiKey)
                 .putString("token",   token)
+                .putInt("upload_interval_sec", uploadIntervalSec)
                 .apply();
 
         if (serviceSwitch.isChecked()) {
+            // Restart so the service picks up a changed upload interval.
+            stopService(new Intent(this, AbrpUploadService.class));
             startForegroundService(new Intent(this, AbrpUploadService.class));
         }
         refreshStatus();

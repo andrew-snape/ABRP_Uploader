@@ -22,6 +22,9 @@
 
     <string name="card_service">Upload Service</string>
     <string name="label_upload_enabled">Enable background uploading</string>
+    <string name="hint_upload_interval">Upload interval (seconds)</string>
+    <string name="helper_upload_interval">How often telemetry is sent to ABRP. Also controls the GPS update rate. Minimum 5s.</string>
+    <string name="upload_interval_invalid">Enter a whole number of seconds, 5 or more</string>
 
     <string name="status_stopped">Service not running</string>
     <string name="status_starting">Starting…</string>

@@ -178,6 +178,26 @@
                     android:text="@string/status_stopped"
                     android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/upload_interval_layout"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:hint="@string/hint_upload_interval"
+                    app:helperText="@string/helper_upload_interval"
+                    app:helperTextTextAppearance="@style/TextAppearance.Material3.BodyMedium">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/upload_interval_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="number"
+                        android:singleLine="true"
+                        android:textSize="18sp" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
