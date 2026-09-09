@@ -50,9 +50,13 @@ public class AbrpUploadService extends Service {
     private static final String TAG             = "AbrpUploadService";
     private static final String CHANNEL_ID      = "abrp_uploader";
     private static final int    NOTIF_ID        = 1;
-    private static final long   UPLOAD_INTERVAL_SEC = 15;
+    private static final long   DEFAULT_UPLOAD_INTERVAL_SEC = 15;
     private static final long   CAR_RECONNECT_INTERVAL_SEC = 30;
     private static final String API_URL         = "https://api.iternio.com/1/tlm/send";
+    // After this many consecutive HTTP 401s (bad credentials), stop hammering
+    // the API and wait for AUTH_BACKOFF_SEC before trying again.
+    private static final int    AUTH_FAILURE_THRESHOLD = 3;
+    private static final long   AUTH_BACKOFF_SEC = 300;
 
     // Set from the main thread (LocationListener uses Main looper), read from
     // the scheduler thread inside doUpload. volatile is sufficient since Location
@@ -67,6 +71,8 @@ public class AbrpUploadService extends Service {
 
     private volatile long lastSuccessfulUploadMs = 0L;
     private volatile long lastCarConnectAttemptMs = 0L;
+    private volatile int  consecutiveAuthFailures = 0;
+    private volatile long authBackoffUntilMs = 0L;
 
     // ---------- Lifecycle ----------
 
@@ -88,12 +94,15 @@ public class AbrpUploadService extends Service {
         connectCarAdapter();
         requestLocationUpdates();
 
-        // Fire the first upload after a short warm-up, then every UPLOAD_INTERVAL_SEC.
-        // scheduleWithFixedDelay ensures we always get at least UPLOAD_INTERVAL_SEC
+        long uploadIntervalSec = prefs.getInt("upload_interval_sec",
+                (int) DEFAULT_UPLOAD_INTERVAL_SEC);
+
+        // Fire the first upload after a short warm-up, then every uploadIntervalSec.
+        // scheduleWithFixedDelay ensures we always get at least uploadIntervalSec
         // between cycles even if a previous upload was slow.
         scheduler.scheduleWithFixedDelay(
                 this::safeUploadCycle,
-                45, UPLOAD_INTERVAL_SEC, TimeUnit.SECONDS);
+                45, uploadIntervalSec, TimeUnit.SECONDS);
 
         Log.i(TAG, "Service started, upload scheduler armed");
     }
@@ -183,6 +192,11 @@ public class AbrpUploadService extends Service {
         }
         if (apiKey.isEmpty()) {
             updateNotification("No API key — open app to configure");
+            return;
+        }
+
+        if (System.currentTimeMillis() < authBackoffUntilMs) {
+            updateNotification("Auth failed — check credentials (paused)");
             return;
         }
 
@@ -287,6 +301,8 @@ public class AbrpUploadService extends Service {
             Log.d(TAG, "ABRP [" + code + "]: " + sb);
 
             if (code == 200) {
+                consecutiveAuthFailures = 0;
+                authBackoffUntilMs = 0L;
                 lastSuccessfulUploadMs = System.currentTimeMillis();
                 String time = android.text.format.DateFormat
                         .format("HH:mm:ss", lastSuccessfulUploadMs).toString();
@@ -299,6 +315,16 @@ public class AbrpUploadService extends Service {
                         : ("GPS only · " + time);
                 updateNotification(detail);
             } else {
+                if (code == 401) {
+                    consecutiveAuthFailures++;
+                    if (consecutiveAuthFailures >= AUTH_FAILURE_THRESHOLD) {
+                        authBackoffUntilMs = System.currentTimeMillis() + AUTH_BACKOFF_SEC * 1000;
+                        Log.w(TAG, "Repeated auth failures — pausing uploads for "
+                                + AUTH_BACKOFF_SEC + "s");
+                    }
+                } else {
+                    consecutiveAuthFailures = 0;
+                }
                 prefs.edit().putString("last_upload_status", "HTTP " + code).apply();
                 updateNotification("Upload error: HTTP " + code);
             }
@@ -327,8 +353,10 @@ public class AbrpUploadService extends Service {
         try {
             locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                long uploadIntervalSec = prefs.getInt("upload_interval_sec",
+                        (int) DEFAULT_UPLOAD_INTERVAL_SEC);
                 locationManager.requestLocationUpdates(
-                        LocationManager.GPS_PROVIDER, 10_000, 0f,
+                        LocationManager.GPS_PROVIDER, uploadIntervalSec * 1000, 0f,
                         locationListener, Looper.getMainLooper());
                 Location last = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
                 if (last != null) lastLocation = last;
